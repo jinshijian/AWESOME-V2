@@ -1,0 +1,215 @@
+---
+title: "GlobalErosionDB"
+author: "Jinshi"
+date: "2/2/2020"
+output: html_document
+---
+
+# Load package
+```{r load package, message=FALSE, include=FALSE, echo=FALSE}
+# https://stackoverflow.com/questions/4090169/elegant-way-to-check-for-missing-packages-and-install-them/19873732
+
+package_list <- c("cowplot","data.table","dplyr","ggplot2", "lubridate", "leaflet"
+                  ,"kableExtra","knitr","ggmap","maps","mapdata","tidyr","sp","ggpubr"
+                  ,"readxl")
+package_new <- package_list[!(package_list %in% installed.packages()[,"Package"])]
+if(length(package_new)) install.packages(package_new)
+
+library(cowplot)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+theme_set(theme_bw())
+library(lubridate)
+library(kableExtra)
+library(knitr)
+library("ggpubr")
+library(ggmap)
+library(maps)
+library(mapdata)
+library(tidyr)
+library("leaflet")
+library(sp)
+library(readxl)
+source("functions.R")
+
+```
+
+
+# Setup
+```{r preliminaries, message=FALSE, include=FALSE, echo=FALSE, cache=TRUE}
+# Set chunks defaults, these options will be applied to all subsequent chunks
+knitr::opts_chunk$set(message = TRUE, include = TRUE, echo = FALSE,
+                      fig.height = 4, fig.width = 8)
+# Constants
+OUTPUT_DIR		<- "outputs/"
+DATA_DIR <- 'data'
+# Create output and log folders if they do not exist
+if(!file.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR)
+if(!file.exists(DATA_DIR)) dir.create(DATA_DIR)
+```
+
+
+# create functions
+```{r functions}
+read_file <- function(x) read.csv(file.path(DATA_DIR, x), comment.char = "#", stringsAsFactors = FALSE)
+read_xlsx <- function(x, n_sheet, n_skip) read_excel(file.path(DATA_DIR, x), sheet = n_sheet, skip = n_skip)
+```
+
+# load data
+```{r load data}
+wos_summary <- read_xlsx('Studies.xlsx', n_sheet = 2, n_skip = 1)
+SEDB <-  read_xlsx('SoilErosionDB.xlsx', n_sheet = 1, n_skip = 0)
+```
+
+# plot number of study by year
+```{r number of study by year, fig.width=8, fig.height=6}
+bind_rows(
+  wos_summary %>% 
+    mutate(Source = "(a) Papers"),
+  SEDB %>% 
+    select(Study_midyear) %>% 
+    filter(!is.na(Study_midyear)) %>% 
+    count(Study_midyear) %>% 
+    mutate(Year = floor(Study_midyear), Num_study = n, Source = "(b) Measurements")) %>% 
+  ggplot(aes(x=Year, y=Num_study)) +
+  geom_bar(stat = "sum") +
+  facet_grid(rows = vars(Source), scales = "free") +
+  labs(x=expression(Year), y=expression(Count~(n))) +
+  scale_x_continuous(breaks = seq(1960,2020,10)) +
+  theme(legend.position = "none")
+# ggsave("outputs/Figure 1 wos summary.jpg", width = 8, height = 5)
+```
+
+
+# site map
+```{r plot site map, fig.height=4, fig.width=8}
+# site_plot
+SEDB %>% select(Longitude, Latitude) %>% 
+  na.omit() %>%
+  group_by(Longitude, Latitude) %>% 
+  summarise(count = n()) ->
+  SEDB_site
+
+SEDB_site %>% select(Longitude, Latitude) %>% 
+  na.omit() %>% 
+  unique() %>% leaflet() %>% 
+  addMarkers() %>% 
+  addTiles(options = providerTileOptions(minZoom = 1, maxZoom = 3)) 
+
+# Step 2: Plot
+# global map
+counties <- map_data("world", region = ".", exact = FALSE)
+# sort(unique(counties$region))
+
+ggplot(data = counties) + 
+  geom_polygon(aes(x = long, y = lat, group = group),
+               color = "white", fill = 'gray') + 
+  guides(fill=FALSE) +
+  geom_point(data = SEDB_site,
+             aes(x=Longitude, y=Latitude,
+                 size = count),
+             alpha = 0.75,
+             stroke = 1,
+             shape=16, col="black"
+             ) +
+  scale_x_continuous(name="Longitude", breaks=seq(-180,180, 60),labels = seq(-180,180, 60))+
+  scale_y_continuous(limits = c(-60, 90),name="Latitude", breaks=seq(-60,90,30),labels = seq(-60,90,30)) +
+  scale_size_continuous(name = "Obs (n)") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+# ggsave("outputs/Figure 1. Sites distribution.png", width = 8, height = 4, dpi = 300, units = "in" )
+
+```
+
+
+# Scatter plot
+```{r plot erosion vs runoff}
+SEDB %>% select(ER_annual, Runoff_annual, IGBP) %>% na.omit() %>% 
+  ggplot(aes(x = Runoff_annual, y = ER_annual, col = IGBP)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(x = expression(Annual~runoff~"(mm)"),
+      y = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")"))
+
+SEDB %>% select(ER_M_Area_h, Runoff_mm_h, IGBP) %>% na.omit() %>% 
+  ggplot(aes(x = Runoff_mm_h, y = ER_M_Area_h, col = IGBP)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(x = expression(Runoff~"rate (mm hr"^{-1}~")"),
+      y = expression(Annual~erosion~"(g m"^{-2}~"hr"^{-1}~")"))
+
+SEDB %>% select(ER_annual, Rainfall_amount, IGBP) %>% na.omit() %>% 
+  ggplot(aes(x = Rainfall_amount, y = ER_annual, col = IGBP)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(x = expression(Annual~rainfall~"(mm)"),
+      y = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")"))
+
+```
+
+
+# density plot
+```{r plot density, fig.height=6, fig.width=8}
+plot_grid(
+  SEDB %>% select(Runoff_annual) %>% 
+    na.omit() %>% 
+    ggplot(aes(Runoff_annual)) +
+    geom_density(fill = "gray") +
+    labs(x = expression(Runoff~"rate (mm hr"^{-1}~")"),
+         y = expression("Density")),
+  
+  SEDB %>% select(ER_annual) %>% 
+    na.omit() %>% 
+    filter(ER_annual <= 100) %>% 
+    ggplot(aes(ER_annual)) +
+    geom_density(fill = "gray") +
+    labs(x = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")"),
+         y = expression("Density")),
+  ncol = 1,
+  labels = c("a", "b")
+)
+
+
+```
+
+## Make check tables
+```{r}
+# Table 1
+SEDB %>% 
+  select(Meas_method) %>% 
+  count(Meas_method) %>% 
+  mutate(Method_group = case_when(
+    Meas_method %in% c("Lab rainfall simulation") ~ "Lab rainfall simulation",
+    Meas_method %in% c("Model", "Remote sensing", "GIS", "Topography", "Dendrochronology") ~ "Indirect methods",
+    Meas_method %in% c("Be7", "Caesium 137", "Field measurement",
+                       "Field rainfall simulation", "Catchment", "Erosion pins") ~ "Field measurements",
+    TRUE ~ "Others" )) ->
+  Table1
+
+ knitr::kable(Table1 %>% select(Method_group, Meas_method, n))
+```
+
+
+```{r}
+# Table 3
+SEDB %>% 
+  select(Quality_flag) %>% 
+  count(Quality_flag)
+```
+
+```{r}
+# Table 4
+SEDB %>% 
+  select(Disturbance) %>% 
+  count(Disturbance)
+```
+
+```{r}
+# Table 5
+SEDB %>% 
+  select(Leaching_matrix) %>% 
+  count(Leaching_matrix)
+```
+

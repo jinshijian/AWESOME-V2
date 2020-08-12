@@ -1,0 +1,28 @@
+# specific files ignored
+.Rhistory
+.RData
+ErosionDB.html
+ErosionDB.docx
+
+# file or dir in this file will be ignored
+Proposal/
+old/
+References/
+SoilErosionModel/
+
+# ignore all files in any directory named Manuscript/SHDB_cash*SHDB/files
+Manuscript/
+ErosionDB_cache/
+ErosionDB_files/
+
+# ignore all .ini .html .tiff
+*.ini
+*.html
+*.tiff
+.Rproj.user/
+
+# ignore all pdf in outputs
+outputs/*.pdf
+
+# project path
+# /G/My\ Drive/MyResearch/SoilErosionDB
