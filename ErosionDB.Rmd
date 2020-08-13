@@ -32,7 +32,6 @@ library("leaflet")
 library(sp)
 library(readxl)
 source("functions.R")
-
 ```
 
 
@@ -66,12 +65,12 @@ SEDB <-  read_xlsx('SoilErosionDB.xlsx', n_sheet = 1, n_skip = 0)
 ```{r number of study by year, fig.width=8, fig.height=6}
 bind_rows(
   wos_summary %>% 
-    mutate(Source = "(a) Papers"),
+    mutate(Source = "a. Papers"),
   SEDB %>% 
     select(Study_midyear) %>% 
     filter(!is.na(Study_midyear)) %>% 
     count(Study_midyear) %>% 
-    mutate(Year = floor(Study_midyear), Num_study = n, Source = "(b) Measurements")) %>% 
+    mutate(Year = floor(Study_midyear), Num_study = n, Source = "b. Measurements")) %>% 
   ggplot(aes(x=Year, y=Num_study)) +
   geom_bar(stat = "sum") +
   facet_grid(rows = vars(Source), scales = "free") +
@@ -151,23 +150,23 @@ SEDB %>% select(ER_annual, Rainfall_amount, IGBP) %>% na.omit() %>%
 
 
 # density plot
-```{r plot density, fig.height=6, fig.width=8}
+```{r plot density, fig.height=4, fig.width=8}
 plot_grid(
   SEDB %>% select(Runoff_annual) %>% 
     na.omit() %>% 
     ggplot(aes(Runoff_annual)) +
-    geom_density(fill = "gray") +
-    labs(x = expression(Runoff~"rate (mm hr"^{-1}~")"),
+    geom_histogram(fill = "gray", col = "black") +
+    labs(x = expression(Annual~Runoff~"(mm yr"^{-1}~")"),
          y = expression("Density")),
   
   SEDB %>% select(ER_annual) %>% 
     na.omit() %>% 
     filter(ER_annual <= 100) %>% 
     ggplot(aes(ER_annual)) +
-    geom_density(fill = "gray") +
+    geom_histogram(fill = "gray", col = "black") +
     labs(x = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")"),
          y = expression("Density")),
-  ncol = 1,
+  ncol = 2,
   labels = c("a", "b")
 )
 
@@ -202,14 +201,18 @@ SEDB %>%
 ```{r}
 # Table 4
 SEDB %>% 
-  select(Disturbance) %>% 
-  count(Disturbance)
+  select(Manipulation) %>% 
+  count(Manipulation)
 ```
 
 ```{r}
 # Table 5
 SEDB %>% 
-  select(Leaching_matrix) %>% 
-  count(Leaching_matrix)
+  select(Leaching_type) %>% 
+  count(Leaching_type)
+```
+
+```{r}
+# Link with external data
 ```
 
