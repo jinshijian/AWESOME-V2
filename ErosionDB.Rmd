@@ -24,41 +24,50 @@ library(lubridate)
 library(kableExtra)
 library(knitr)
 library("ggpubr")
-library(ggmap)
-library(maps)
-library(mapdata)
 library(tidyr)
 library("leaflet")
 library(sp)
 library(readxl)
-source("functions.R")
 ```
-
 
 # Setup
 ```{r preliminaries, message=FALSE, include=FALSE, echo=FALSE, cache=TRUE}
 # Set chunks defaults, these options will be applied to all subsequent chunks
 knitr::opts_chunk$set(message = TRUE, include = TRUE, echo = FALSE,
                       fig.height = 4, fig.width = 8)
-# Constants
-OUTPUT_DIR		<- "outputs/"
-DATA_DIR <- 'data'
-# Create output and log folders if they do not exist
-if(!file.exists(OUTPUT_DIR)) dir.create(OUTPUT_DIR)
-if(!file.exists(DATA_DIR)) dir.create(DATA_DIR)
-```
 
-
-# create functions
-```{r functions}
-read_file <- function(x) read.csv(file.path(DATA_DIR, x), comment.char = "#", stringsAsFactors = FALSE)
-read_xlsx <- function(x, n_sheet, n_skip) read_excel(file.path(DATA_DIR, x), sheet = n_sheet, skip = n_skip)
 ```
 
 # load data
 ```{r load data}
-wos_summary <- read_xlsx('Studies.xlsx', n_sheet = 2, n_skip = 1)
-SEDB <-  read_xlsx('SoilErosionDB.xlsx', n_sheet = 1, n_skip = 0)
+wos_summary <- drake::readd(wos_summary)
+SEDB_del <- drake::readd(SEDB_del)
+counties <- drake::readd(counties)
+GlobalMATMAP <- drake::readd(GlobalMATMAP)
+IGBP_MODIS <- drake::readd(IGBP_MODIS)
+
+## join and get climate, vegetation information
+SEDB_del %>% mutate(Latitude2 = round(Latitude*2)/2,
+                 Longitude2 = round(Longitude*2)/2,
+                 Lat_dif = ifelse(Latitude2 - Latitude >=0, 0.25, -0.25),
+                 Lon_dif = ifelse(Longitude2 - Longitude >=0, 0.25, -0.25),
+                 Latitude2 = Latitude2 - Lat_dif,
+                 Longitude2 = Longitude2 - Lon_dif) %>% 
+  dplyr::select(-Lat_dif, -Lon_dif) -> 
+  SEDB_del
+
+# Get Ecosystem class, MAT and MAP for srdb data
+left_join(SEDB_del, IGBP_MODIS, by=c("Latitude2"="Latitude", "Longitude2"="Longitude")) ->
+  SEDB_del
+
+# Get MAT and MAP
+left_join(SEDB_del, GlobalMATMAP, by=c("Latitude2"="Latitude", "Longitude2"="Longitude")) ->
+  SEDB_del
+
+SEDB_del %>% 
+  dplyr::select(Study_midyear, Latitude, Longitude, MAT, MAP, Study_temp, Study_precip, MAT_Del, MAP_Del, Tannual_del, Pannual_del) 
+# Change Latitude and Longitude to 0.5 resolution for IGBP
+
 ```
 
 # plot number of study by year
@@ -66,7 +75,7 @@ SEDB <-  read_xlsx('SoilErosionDB.xlsx', n_sheet = 1, n_skip = 0)
 bind_rows(
   wos_summary %>% 
     mutate(Source = "a. Papers"),
-  SEDB %>% 
+  SEDB_del %>% 
     select(Study_midyear) %>% 
     filter(!is.na(Study_midyear)) %>% 
     count(Study_midyear) %>% 
@@ -80,15 +89,29 @@ bind_rows(
 # ggsave("outputs/Figure 1 wos summary.jpg", width = 8, height = 5)
 ```
 
-
 # site map
 ```{r plot site map, fig.height=4, fig.width=8}
-# site_plot
-SEDB %>% select(Longitude, Latitude) %>% 
-  na.omit() %>%
-  group_by(Longitude, Latitude) %>% 
-  summarise(count = n()) ->
-  SEDB_site
+# site_plot using leaflet function
+bind_rows(
+  SEDB_del %>% 
+    mutate(ER_annual = coalesce(ER_annual, ER_M_Area_h)) %>% 
+    select(Longitude, Latitude, ER_annual, ER_M_Area_h) %>% 
+    filter(!is.na(Longitude) & !is.na(ER_annual)) %>%
+    group_by(Longitude, Latitude) %>% 
+    summarise(count = n()) %>% 
+    mutate(Indicator = "Erosion"),
+  
+  SEDB_del %>% select(Longitude, Latitude, Runoff_annual) %>% 
+    filter(!is.na(Longitude) & !is.na(Runoff_annual)) %>%
+    group_by(Longitude, Latitude) %>% 
+    summarise(count = n()) %>% 
+    mutate(Indicator = "Runoff"),
+  
+  SEDB_del %>% select(Longitude, Latitude, Leaching) %>% 
+    filter(!is.na(Longitude) & !is.na(Leaching)) %>%
+    group_by(Longitude, Latitude) %>% 
+    summarise(count = n()) %>% 
+    mutate(Indicator = "Leaching") ) ->  SEDB_site
 
 SEDB_site %>% select(Longitude, Latitude) %>% 
   na.omit() %>% 
@@ -96,22 +119,21 @@ SEDB_site %>% select(Longitude, Latitude) %>%
   addMarkers() %>% 
   addTiles(options = providerTileOptions(minZoom = 1, maxZoom = 3)) 
 
-# Step 2: Plot
 # global map
-counties <- map_data("world", region = ".", exact = FALSE)
 # sort(unique(counties$region))
-
 ggplot(data = counties) + 
   geom_polygon(aes(x = long, y = lat, group = group),
-               color = "white", fill = 'gray') + 
+               color = "white", fill = 'gray', alpha = 0.25) + 
   guides(fill=FALSE) +
   geom_point(data = SEDB_site,
              aes(x=Longitude, y=Latitude,
-                 size = count),
-             alpha = 0.75,
-             stroke = 1,
-             shape=16, col="black"
-             ) +
+                 size = count, 
+                 col = Indicator,
+                 shape = Indicator),
+             alpha = 1,
+             stroke = 1 ) +
+  scale_shape_manual(values = c(1, 16, 3)) +
+  scale_color_manual(values = c("black", "blue", "red")) +
   scale_x_continuous(name="Longitude", breaks=seq(-180,180, 60),labels = seq(-180,180, 60))+
   scale_y_continuous(limits = c(-60, 90),name="Latitude", breaks=seq(-60,90,30),labels = seq(-60,90,30)) +
   scale_size_continuous(name = "Obs (n)") +
@@ -119,28 +141,26 @@ ggplot(data = counties) +
         panel.grid.minor = element_blank())
 
 # ggsave("outputs/Figure 1. Sites distribution.png", width = 8, height = 4, dpi = 300, units = "in" )
-
 ```
-
 
 # Scatter plot
 ```{r plot erosion vs runoff}
-SEDB %>% select(ER_annual, Runoff_annual, IGBP) %>% na.omit() %>% 
-  ggplot(aes(x = Runoff_annual, y = ER_annual, col = IGBP)) +
+SEDB_del %>% select(ER_annual, Runoff_annual, IGBP.y) %>% na.omit() %>% 
+  ggplot(aes(x = Runoff_annual, y = ER_annual, col = IGBP.y)) +
   geom_point() +
   geom_smooth(method = "lm") +
   labs(x = expression(Annual~runoff~"(mm)"),
       y = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")"))
 
-SEDB %>% select(ER_M_Area_h, Runoff_mm_h, IGBP) %>% na.omit() %>% 
-  ggplot(aes(x = Runoff_mm_h, y = ER_M_Area_h, col = IGBP)) +
+SEDB_del %>% select(ER_M_Area_h, Runoff_mm_h, IGBP.y) %>% na.omit() %>% 
+  ggplot(aes(x = Runoff_mm_h, y = ER_M_Area_h, col = IGBP.y)) +
   geom_point() +
   geom_smooth(method = "lm") +
   labs(x = expression(Runoff~"rate (mm hr"^{-1}~")"),
       y = expression(Annual~erosion~"(g m"^{-2}~"hr"^{-1}~")"))
 
-SEDB %>% select(ER_annual, Rainfall_amount, IGBP) %>% na.omit() %>% 
-  ggplot(aes(x = Rainfall_amount, y = ER_annual, col = IGBP)) +
+SEDB_del %>% select(ER_annual, Rainfall_amount, IGBP.y) %>% na.omit() %>% 
+  ggplot(aes(x = Rainfall_amount, y = ER_annual, col = IGBP.y)) +
   geom_point() +
   geom_smooth(method = "lm") +
   labs(x = expression(Annual~rainfall~"(mm)"),
@@ -148,18 +168,17 @@ SEDB %>% select(ER_annual, Rainfall_amount, IGBP) %>% na.omit() %>%
 
 ```
 
-
 # density plot
 ```{r plot density, fig.height=4, fig.width=8}
 plot_grid(
-  SEDB %>% select(Runoff_annual) %>% 
+  SEDB_del %>% select(Runoff_annual) %>% 
     na.omit() %>% 
     ggplot(aes(Runoff_annual)) +
     geom_histogram(fill = "gray", col = "black") +
     labs(x = expression(Annual~Runoff~"(mm yr"^{-1}~")"),
          y = expression("Density")),
   
-  SEDB %>% select(ER_annual) %>% 
+  SEDB_del %>% select(ER_annual) %>% 
     na.omit() %>% 
     filter(ER_annual <= 100) %>% 
     ggplot(aes(ER_annual)) +
@@ -173,10 +192,10 @@ plot_grid(
 
 ```
 
-## Make check tables
+## Make tables for the SDATA manuscript
 ```{r}
 # Table 1
-SEDB %>% 
+SEDB_del %>% 
   select(Meas_method) %>% 
   count(Meas_method) %>% 
   mutate(Method_group = case_when(
@@ -190,29 +209,84 @@ SEDB %>%
  knitr::kable(Table1 %>% select(Method_group, Meas_method, n))
 ```
 
-
 ```{r}
 # Table 3
-SEDB %>% 
+SEDB_del %>% 
   select(Quality_flag) %>% 
   count(Quality_flag)
 ```
 
 ```{r}
 # Table 4
-SEDB %>% 
+SEDB_del %>% 
   select(Manipulation) %>% 
   count(Manipulation)
 ```
 
 ```{r}
 # Table 5
-SEDB %>% 
+SEDB_del %>% 
   select(Leaching_type) %>% 
   count(Leaching_type)
 ```
 
 ```{r}
-# Link with external data
+# Link with external data and plot
+SEDB_del$Study_precip[SEDB_del$Study_number == 82] <- 1632
+SEDB_del %>% 
+  dplyr::select(Study_midyear, Latitude, Longitude, MAT, MAP, Study_temp, Study_precip, MAT_Del, MAP_Del, Tannual_del, Pannual_del) 
+
+bind_rows(
+  SEDB_del %>% 
+    dplyr::select(MAT, MAT_Del) %>% 
+    rename(Study = MAT, Del = MAT_Del) %>% 
+    na.omit() %>% 
+    mutate(Type = "(a) MAT"),
+  
+  SEDB_del %>% 
+    dplyr::select(Study_temp, Tannual_del) %>% 
+    rename(Study = Study_temp, Del = Tannual_del) %>% 
+    na.omit() %>% 
+    mutate(Type = "(b) Annual temperature"),
+  
+  SEDB_del %>% 
+    dplyr::select(MAP, MAP_Del) %>% 
+    rename(Study = MAP, Del = MAP_Del) %>% 
+    na.omit() %>% 
+    mutate(Type = "(c) MAP"),
+  
+  SEDB_del %>% 
+    dplyr::select(Study_precip, Pannual_del) %>% 
+    rename(Study = Study_precip, Del = Pannual_del) %>% 
+    na.omit() %>% 
+    mutate(Type = "(d) Annual precipitation")) %>% 
+  ggplot(aes(Del, Study)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  geom_abline(col = "red", linetype = "dotdash", size = 1.15) +
+  facet_wrap(~ Type, ncol = 2, scales = "free") +
+  labs(x = expression(Values~from~the~global~climate~dataset),
+       y = expression(Values~from~papers))
+```
+
+```{r}
+SEDB_del %>% select(ER_annual, Pannual_del) %>%
+  na.omit() %>% 
+  filter(ER_annual < 500) %>% 
+  group_by(Pannual_del) %>% 
+  summarise(Obs = n(), ER_annual = mean(ER_annual)) ->
+  SEDB_agg
+
+SEDB_agg %>% 
+  # filter(Pannual_del < 3000 & ER_annual < 300) %>%
+  ggplot(aes(x = Pannual_del, y = ER_annual, size = Obs)) +
+  geom_point(alpha = 0.75) +
+  geom_smooth(method = "lm", show.legend = FALSE) +
+  labs(x = expression(Annual~precipitation~"(mm)"),
+      y = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  scale_size_continuous(name = "Obs (n)") +
+  annotate("text", x = 2505, y = 320, label = "italic(R) ^ 2 == 0.04", hjust = 0, parse = TRUE)
+
+lm(SEDB_agg$ER_annual ~ SEDB_agg$Pannual_del, weights = SEDB_agg$Obs) %>% summary()
 ```
 

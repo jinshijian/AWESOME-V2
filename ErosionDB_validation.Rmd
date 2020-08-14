@@ -1,0 +1,72 @@
+---
+title: "GlobalErosionDB"
+author: "Jinshi"
+date: "2/2/2020"
+output: html_document
+---
+
+# Load package
+```{r load package, message=FALSE, include=FALSE, echo=FALSE}
+# https://stackoverflow.com/questions/4090169/elegant-way-to-check-for-missing-packages-and-install-them/19873732
+
+package_list <- c("cowplot","data.table","dplyr","ggplot2", "lubridate", "leaflet"
+                  ,"kableExtra","knitr","ggmap","maps","mapdata","tidyr","sp","ggpubr"
+                  ,"readxl")
+package_new <- package_list[!(package_list %in% installed.packages()[,"Package"])]
+if(length(package_new)) install.packages(package_new)
+
+library(cowplot)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+theme_set(theme_bw())
+library(lubridate)
+library(kableExtra)
+library(knitr)
+library("ggpubr")
+library(tidyr)
+library("leaflet")
+library(sp)
+library(readxl)
+```
+
+# Setup
+```{r preliminaries, message=FALSE, include=FALSE, echo=FALSE, cache=TRUE}
+# Set chunks defaults, these options will be applied to all subsequent chunks
+knitr::opts_chunk$set(message = TRUE, include = TRUE, echo = FALSE,
+                      fig.height = 4, fig.width = 8)
+
+```
+
+# load data
+```{r load data}
+wos_summary <- drake::readd(wos_summary)
+SEDB_del <- drake::readd(SEDB_del)
+counties <- drake::readd(counties)
+GlobalMATMAP <- drake::readd(GlobalMATMAP)
+IGBP_MODIS <- drake::readd(IGBP_MODIS)
+
+## join and get climate, vegetation information
+SEDB_del %>% mutate(Latitude2 = round(Latitude*2)/2,
+                 Longitude2 = round(Longitude*2)/2,
+                 Lat_dif = ifelse(Latitude2 - Latitude >=0, 0.25, -0.25),
+                 Lon_dif = ifelse(Longitude2 - Longitude >=0, 0.25, -0.25),
+                 Latitude2 = Latitude2 - Lat_dif,
+                 Longitude2 = Longitude2 - Lon_dif) %>% 
+  dplyr::select(-Lat_dif, -Lon_dif) -> 
+  SEDB_del
+
+# Get Ecosystem class, MAT and MAP for srdb data
+left_join(SEDB_del, IGBP_MODIS, by=c("Latitude2"="Latitude", "Longitude2"="Longitude")) ->
+  SEDB_del
+
+# Get MAT and MAP
+left_join(SEDB_del, GlobalMATMAP, by=c("Latitude2"="Latitude", "Longitude2"="Longitude")) ->
+  SEDB_del
+
+SEDB_del %>% 
+  dplyr::select(Study_midyear, Latitude, Longitude, MAT, MAP, Study_temp, Study_precip, MAT_Del, MAP_Del, Tannual_del, Pannual_del) 
+# Change Latitude and Longitude to 0.5 resolution for IGBP
+
+```
+
