@@ -1,7 +1,7 @@
 ---
-title: "GlobalErosionDB"
+title: "SoilErosionDB"
 author: "Jinshi"
-date: "2/2/2020"
+date: "8/12/2020"
 output: html_document
 ---
 
@@ -69,4 +69,52 @@ SEDB_del %>%
 # Change Latitude and Longitude to 0.5 resolution for IGBP
 
 ```
+
+
+```{r check potential latitude and longitude input error}
+varCountry <- sort(unique(SEDB_del$Country)) # data from 43 countries, all data has contry information
+sum_country <- as.data.frame(matrix(NA, ncol = 7))
+colnames(sum_country) <- c("ID", "Country", "Lat_min", "Lat_max", "Long_min", "Long_max", "obs(n)")
+
+for (i in seq(varCountry)) {
+  subdata <- SEDB_del %>% filter(Country == varCountry[i] & !is.na(Country)) 
+  min_lat <- min(subdata$Latitude, na.rm = T)
+  max_lat <- max(subdata$Latitude, na.rm = T)
+  min_long <- min(subdata$Longitude, na.rm = T)
+  max_long <- max(subdata$Longitude, na.rm = T)
+  n_obs <- nrow(subdata) # number of observations in this country
+  
+  sum_country[i,] <- list(i, varCountry[i], min_lat, max_lat, min_long, max_long, n_obs)
+  sum_country %>% filter(is.finite(Lat_min)) ->
+    sum_country
+}
+
+sum_country # view and check potential latitude and longitude input error
+
+for(i in seq(nrow(sum_country))) {
+  sdata = sum_country[i,]
+  country_lat_long_check(sdata)
+  print(paste0("*****", i))
+}
+```
+
+```{r histgram of numeric records information}
+colnames(SEDB_del)
+var_num_col <- colnames(SEDB_del) 
+# create a function to 
+
+for(i in seq(var_num_col)){
+  sub_data = sdata[, which(colnames(sdata) == var_num_col[i])]
+  colnames(sub_data) = "Value"
+  sub_data %>% na.omit() -> sub_data
+  if(var_num_col[i] %in% c("Unique_ID", "barren_yn", "Study_number")) {next}
+  else if(is.numeric(sub_data$Value)) {qc_background (SEDB_del)} 
+  else {next}
+  print(i)
+}
+
+```
+
+
+
 

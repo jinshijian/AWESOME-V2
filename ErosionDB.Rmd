@@ -28,6 +28,7 @@ library(tidyr)
 library("leaflet")
 library(sp)
 library(readxl)
+source("functions.R")
 ```
 
 # Setup
@@ -91,6 +92,11 @@ bind_rows(
 
 # site map
 ```{r plot site map, fig.height=4, fig.width=8}
+SEDB_del %>% 
+  select(Latitude, Longitude) %>% 
+  na.omit() %>% 
+  unique()
+
 # site_plot using leaflet function
 bind_rows(
   SEDB_del %>% 
@@ -135,10 +141,12 @@ ggplot(data = counties) +
   scale_shape_manual(values = c(1, 16, 3)) +
   scale_color_manual(values = c("black", "blue", "red")) +
   scale_x_continuous(name="Longitude", breaks=seq(-180,180, 60),labels = seq(-180,180, 60))+
-  scale_y_continuous(limits = c(-60, 90),name="Latitude", breaks=seq(-60,90,30),labels = seq(-60,90,30)) +
+  scale_y_continuous(limits = c(-60, 80),name="Latitude", breaks=seq(-60,80,30),labels = seq(-60,80,30)) +
   scale_size_continuous(name = "Obs (n)") +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
+
+# country_lat_long_check(SEDB_del %>% filter(Country %in% c("China", "USA")))
 
 # ggsave("outputs/Figure 1. Sites distribution.png", width = 8, height = 4, dpi = 300, units = "in" )
 ```
@@ -253,13 +261,13 @@ bind_rows(
     dplyr::select(MAP, MAP_Del) %>% 
     rename(Study = MAP, Del = MAP_Del) %>% 
     na.omit() %>% 
-    mutate(Type = "(c) MAP"),
+    mutate(Type = "(c) MAP (mm)"),
   
   SEDB_del %>% 
     dplyr::select(Study_precip, Pannual_del) %>% 
     rename(Study = Study_precip, Del = Pannual_del) %>% 
     na.omit() %>% 
-    mutate(Type = "(d) Annual precipitation")) %>% 
+    mutate(Type = "(d) Annual precipitation (mm)")) %>% 
   ggplot(aes(Del, Study)) +
   geom_point() +
   geom_smooth(method = "lm") +
@@ -274,7 +282,8 @@ SEDB_del %>% select(ER_annual, Pannual_del) %>%
   na.omit() %>% 
   filter(ER_annual < 500) %>% 
   group_by(Pannual_del) %>% 
-  summarise(Obs = n(), ER_annual = mean(ER_annual)) ->
+  summarise(Obs = n(), ER_annual = mean(ER_annual)) %>% 
+  mutate(ER_annual = log(ER_annual)) ->
   SEDB_agg
 
 SEDB_agg %>% 
@@ -283,9 +292,9 @@ SEDB_agg %>%
   geom_point(alpha = 0.75) +
   geom_smooth(method = "lm", show.legend = FALSE) +
   labs(x = expression(Annual~precipitation~"(mm)"),
-      y = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")")) +
+      y = expression(Annual~'erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
   scale_size_continuous(name = "Obs (n)") +
-  annotate("text", x = 2505, y = 320, label = "italic(R) ^ 2 == 0.04", hjust = 0, parse = TRUE)
+  annotate("text", x = 3000, y = -2, label = "italic(R) ^ 2 == 0.07", hjust = 0, parse = TRUE)
 
 lm(SEDB_agg$ER_annual ~ SEDB_agg$Pannual_del, weights = SEDB_agg$Obs) %>% summary()
 ```
