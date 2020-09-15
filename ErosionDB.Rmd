@@ -75,15 +75,15 @@ SEDB_del %>%
 ```{r number of study by year, fig.width=8, fig.height=6}
 bind_rows(
   wos_summary %>% 
-    mutate(Source = "a. Papers"),
+    mutate(Source = "(a) Number of papers between 1960 and 2020"),
   SEDB_del %>% 
     select(Study_midyear) %>% 
     filter(!is.na(Study_midyear)) %>% 
     count(Study_midyear) %>% 
-    mutate(Year = floor(Study_midyear), Num_study = n, Source = "b. Measurements")) %>% 
+    mutate(Year = floor(Study_midyear), Num_study = n, Source = "(b) Number of measurements compiled in SoilErosionDB")) %>% 
   ggplot(aes(x=Year, y=Num_study)) +
   geom_bar(stat = "sum") +
-  facet_grid(rows = vars(Source), scales = "free") +
+  facet_wrap(Source ~ ., scales = "free", ncol = 1) +
   labs(x=expression(Year), y=expression(Count~(n))) +
   scale_x_continuous(breaks = seq(1960,2020,10)) +
   theme(legend.position = "none")
@@ -194,7 +194,8 @@ plot_grid(
     labs(x = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")"),
          y = expression("Density")),
   ncol = 2,
-  labels = c("a", "b")
+  hjust = -4, vjust = 3,
+  labels = c("(a)", "(b)")
 )
 
 
@@ -296,6 +297,9 @@ SEDB_agg %>%
   scale_size_continuous(name = "Obs (n)") +
   annotate("text", x = 3000, y = -2, label = "italic(R) ^ 2 == 0.07", hjust = 0, parse = TRUE)
 
-lm(SEDB_agg$ER_annual ~ SEDB_agg$Pannual_del, weights = SEDB_agg$Obs) %>% summary()
+slm <- lm(SEDB_agg$ER_annual ~ SEDB_agg$Pannual_del, weights = SEDB_agg$Obs) 
+summary(slm)
+
+cooks.distance( slm ) %>% max()
 ```
 
