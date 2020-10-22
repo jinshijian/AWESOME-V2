@@ -28,6 +28,11 @@ library(tidyr)
 library("leaflet")
 library(sp)
 library(readxl)
+# install.packages("ggridges")
+library(ggridges)
+library(patchwork)
+require(foreign)
+require(MASS)
 source("functions.R")
 ```
 
@@ -72,7 +77,7 @@ SEDB_del %>%
 ```
 
 # plot number of study by year
-```{r number of study by year, fig.width=8, fig.height=6}
+```{r number of study by year, fig.width=8, fig.height=7}
 bind_rows(
   wos_summary %>% 
     mutate(Source = "(a) Number of papers between 1960 and 2020"),
@@ -198,6 +203,37 @@ plot_grid(
   labels = c("(a)", "(b)")
 )
 
+ggplot(iris, aes(x = Sepal.Length, y = Species, fill = 0.5 - abs(0.5 - stat(ecdf)))) +
+  stat_density_ridges(geom = "density_ridges_gradient", calc_ecdf = TRUE) +
+  scale_fill_viridis_c(name = "Tail probability", direction = -1)
+
+SEDB_del %>% select(Runoff_annual, Ecosystem2) %>% 
+  na.omit() %>% 
+  ggplot(aes(Runoff_annual, Ecosystem2, fill = 0.5 - abs(0.5 - stat(ecdf)))) +
+  stat_density_ridges(geom = "density_ridges_gradient", calc_ecdf = TRUE) +
+  scale_fill_viridis_c(name = "Tail probability", direction = -1) +
+  labs(x = expression(Annual~Runoff~"(mm yr"^{-1}~")"),
+       y = expression("Density")) +
+  scale_y_discrete(breaks = c("Wetland", "T&B FOR", "Shrubland", "Savanna", "Grassland", "Agriculture"),
+                   labels = c("Wetland", "Forest", "Shrubland", "Savanna", "Grassland", "Agriculture")) +
+  theme(legend.position = "none") ->
+  p1
+
+SEDB_del %>% select(ER_annual, Ecosystem2) %>% 
+  na.omit() %>% 
+  filter(ER_annual <= 50 & Ecosystem2 != "Urban") %>%
+  ggplot(aes(ER_annual, Ecosystem2, fill = 0.5 - abs(0.5 - stat(ecdf)))) +
+  stat_density_ridges(geom = "density_ridges_gradient", calc_ecdf = TRUE) +
+  scale_fill_viridis_c(name = "Probability", direction = -1) +
+  theme(axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        legend.position = "right") +
+  labs(x = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")"),
+       y = expression("Density")) ->
+  p2
+
+p1 + p2
 
 ```
 
@@ -299,7 +335,11 @@ SEDB_agg %>%
 
 slm <- lm(SEDB_agg$ER_annual ~ SEDB_agg$Pannual_del, weights = SEDB_agg$Obs) 
 summary(slm)
-
 cooks.distance( slm ) %>% max()
+
+# Robust regression
+rust_lm <- rlm(SEDB_agg$ER_annual ~ SEDB_agg$Pannual_del, weights = SEDB_agg$Obs)
+summary(rust_lm)
+cooks.distance( rust_lm ) %>% max()
 ```
 
