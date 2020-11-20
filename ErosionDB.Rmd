@@ -82,7 +82,7 @@ bind_rows(
   wos_summary %>% 
     mutate(Source = "(a) Number of papers between 1960 and 2020"),
   SEDB_del %>% 
-    select(Study_midyear) %>% 
+    dplyr::select(Study_midyear) %>% 
     filter(!is.na(Study_midyear)) %>% 
     count(Study_midyear) %>% 
     mutate(Year = floor(Study_midyear), Num_study = n, Source = "(b) Number of measurements compiled in SoilErosionDB")) %>% 
@@ -98,7 +98,7 @@ bind_rows(
 # site map
 ```{r plot site map, fig.height=4, fig.width=8}
 SEDB_del %>% 
-  select(Latitude, Longitude) %>% 
+  dplyr::select(Latitude, Longitude) %>% 
   na.omit() %>% 
   unique()
 
@@ -106,25 +106,25 @@ SEDB_del %>%
 bind_rows(
   SEDB_del %>% 
     mutate(ER_annual = coalesce(ER_annual, ER_M_Area_h)) %>% 
-    select(Longitude, Latitude, ER_annual, ER_M_Area_h) %>% 
+    dplyr::select(Longitude, Latitude, ER_annual, ER_M_Area_h) %>% 
     filter(!is.na(Longitude) & !is.na(ER_annual)) %>%
     group_by(Longitude, Latitude) %>% 
     summarise(count = n()) %>% 
     mutate(Indicator = "Erosion"),
   
-  SEDB_del %>% select(Longitude, Latitude, Runoff_annual) %>% 
+  SEDB_del %>% dplyr::select(Longitude, Latitude, Runoff_annual) %>% 
     filter(!is.na(Longitude) & !is.na(Runoff_annual)) %>%
     group_by(Longitude, Latitude) %>% 
     summarise(count = n()) %>% 
     mutate(Indicator = "Runoff"),
   
-  SEDB_del %>% select(Longitude, Latitude, Leaching) %>% 
+  SEDB_del %>% dplyr::select(Longitude, Latitude, Leaching) %>% 
     filter(!is.na(Longitude) & !is.na(Leaching)) %>%
     group_by(Longitude, Latitude) %>% 
     summarise(count = n()) %>% 
     mutate(Indicator = "Leaching") ) ->  SEDB_site
 
-SEDB_site %>% select(Longitude, Latitude) %>% 
+SEDB_site %>% dplyr::select(Longitude, Latitude) %>% 
   na.omit() %>% 
   unique() %>% leaflet() %>% 
   addMarkers() %>% 
@@ -158,21 +158,21 @@ ggplot(data = counties) +
 
 # Scatter plot
 ```{r plot erosion vs runoff}
-SEDB_del %>% select(ER_annual, Runoff_annual, IGBP.y) %>% na.omit() %>% 
+SEDB_del %>% dplyr::select(ER_annual, Runoff_annual, IGBP.y) %>% na.omit() %>% 
   ggplot(aes(x = Runoff_annual, y = ER_annual, col = IGBP.y)) +
   geom_point() +
   geom_smooth(method = "lm") +
   labs(x = expression(Annual~runoff~"(mm)"),
       y = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")"))
 
-SEDB_del %>% select(ER_M_Area_h, Runoff_mm_h, IGBP.y) %>% na.omit() %>% 
+SEDB_del %>% dplyr::select(ER_M_Area_h, Runoff_mm_h, IGBP.y) %>% na.omit() %>% 
   ggplot(aes(x = Runoff_mm_h, y = ER_M_Area_h, col = IGBP.y)) +
   geom_point() +
   geom_smooth(method = "lm") +
   labs(x = expression(Runoff~"rate (mm hr"^{-1}~")"),
       y = expression(Annual~erosion~"(g m"^{-2}~"hr"^{-1}~")"))
 
-SEDB_del %>% select(ER_annual, Rainfall_amount, IGBP.y) %>% na.omit() %>% 
+SEDB_del %>% dplyr::select(ER_annual, Rainfall_amount, IGBP.y) %>% na.omit() %>% 
   ggplot(aes(x = Rainfall_amount, y = ER_annual, col = IGBP.y)) +
   geom_point() +
   geom_smooth(method = "lm") +
@@ -184,14 +184,14 @@ SEDB_del %>% select(ER_annual, Rainfall_amount, IGBP.y) %>% na.omit() %>%
 # density plot
 ```{r plot density, fig.height=4, fig.width=8}
 plot_grid(
-  SEDB_del %>% select(Runoff_annual) %>% 
+  SEDB_del %>% dplyr::select(Runoff_annual) %>% 
     na.omit() %>% 
     ggplot(aes(Runoff_annual)) +
     geom_histogram(fill = "gray", col = "black") +
     labs(x = expression(Annual~Runoff~"(mm yr"^{-1}~")"),
          y = expression("Density")),
   
-  SEDB_del %>% select(ER_annual) %>% 
+  SEDB_del %>% dplyr::select(ER_annual) %>% 
     na.omit() %>% 
     filter(ER_annual <= 100) %>% 
     ggplot(aes(ER_annual)) +
@@ -207,7 +207,8 @@ ggplot(iris, aes(x = Sepal.Length, y = Species, fill = 0.5 - abs(0.5 - stat(ecdf
   stat_density_ridges(geom = "density_ridges_gradient", calc_ecdf = TRUE) +
   scale_fill_viridis_c(name = "Tail probability", direction = -1)
 
-SEDB_del %>% select(Runoff_annual, Ecosystem2) %>% 
+SEDB_del %>% dplyr::select(Runoff_annual, Ecosystem2) %>% 
+  dplyr::filter(Runoff_annual > 0) %>% 
   na.omit() %>% 
   ggplot(aes(Runoff_annual, Ecosystem2, fill = 0.5 - abs(0.5 - stat(ecdf)))) +
   stat_density_ridges(geom = "density_ridges_gradient", calc_ecdf = TRUE) +
@@ -219,9 +220,9 @@ SEDB_del %>% select(Runoff_annual, Ecosystem2) %>%
   theme(legend.position = "none") ->
   p1
 
-SEDB_del %>% select(ER_annual, Ecosystem2) %>% 
+SEDB_del %>% dplyr::select(ER_annual, Ecosystem2) %>% 
   na.omit() %>% 
-  filter(ER_annual <= 50 & Ecosystem2 != "Urban") %>%
+  filter(ER_annual <= 50 & Ecosystem2 != "Urban" & ER_annual > 0) %>%
   ggplot(aes(ER_annual, Ecosystem2, fill = 0.5 - abs(0.5 - stat(ecdf)))) +
   stat_density_ridges(geom = "density_ridges_gradient", calc_ecdf = TRUE) +
   scale_fill_viridis_c(name = "Probability", direction = -1) +
