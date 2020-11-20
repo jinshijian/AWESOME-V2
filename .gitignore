@@ -9,6 +9,7 @@ Proposal/
 old/
 References/
 SoilErosionModel/
+extdata/
 
 # ignore all files in any directory named Manuscript/SHDB_cash*SHDB/files
 Manuscript/
