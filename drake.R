@@ -10,6 +10,8 @@ library(drake)  # 6.1.0
 library(ggmap)
 library(maps)
 library(mapdata)
+# install.packages("read_excel")
+library(readxl)
 
 OUTPUT_DIR		<- "outputs"
 DATA_DIR <- 'data'
@@ -26,8 +28,9 @@ read_xlsx <- function(x, n_sheet, n_skip) read_excel(file.path(DATA_DIR, x), she
 writ_file <- function(input, output) write.csv(input, file.path(OUT_DIR, output), row.names = FALSE)
 # clean SEDB
 clean_sedb <- function() {
-  sdata <- read_xlsx('SoilErosionDB.xlsx', n_sheet = 1, n_skip = 0)
-  sdata$Study_midyear <- ifelse(!is.na(sdata$Study_midyear), sdata$Study_midyear, sdata$Paper_year - 3)
+  # sdata <- read_xlsx('SoilErosionDB_v2.xlsx', n_sheet = 1, n_skip = 0)
+  sdata <- read.csv("data/SoilErosionDB_v2.csv")
+  sdata$Study_midyear <- ifelse(!is.na(sdata$Study_midyear), sdata$Study_midyear, sdata$Paper_year - 12)
   sdata$Study_midyear <- floor(sdata$Study_midyear)
   return(sdata)
 }
@@ -36,10 +39,10 @@ clean_sedb <- function() {
 # i = 1
 # sdata = test_data
 get_del_climate <- function(sdata) {
-  tm_location <- "~/Documents/PNNL/bigdata/UDel/Global2011T_XLS"
-  pm_location <- "~/Documents/PNNL/bigdata/UDel/Global2011P_XLS"
+  tm_location <- "F:/My Drive/PNNL/data/bigdata/UDel/Global2011T_XLS"
+  pm_location <- "F:/My Drive/PNNL/data/bigdata/UDel/Global2011P_XLS"
   for (i in 1:nrow(sdata)) {
-    # for (i in 1:500) {
+    # for (i in 91:150) {
     target_year <- sdata$Study_midyear[i]
     target_lat <- sdata$Latitude[i]
     target_lon <- sdata$Longitude[i]
@@ -75,18 +78,19 @@ get_del_climate <- function(sdata) {
         dplyr::select(M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M12, MAP) ->
         del_map
       
-      # get tm data from UDel for MGRsD
+      # get tm data from UDel for SEDB
       if(nrow(del_mat) == 0) {next}
       else{
         sdata[i, "Tannual_del"] <- del_mat$MAT # get annual temperature
       }
       
-      # get pm data from UDel for MGRsD
+      # get pm data from UDel for SEDB
       if(nrow(del_map) == 0) {next}
       else{
         sdata[i, "Pannual_del"] <- del_map$MAP # get annual precip
       }
-      print(paste0("***** ", sdata$Study_number[i],'*****', i))
+      if (i %in% seq(0, 6000, 100)) 
+        {print(paste0("***** ", sdata$Study_number[i],'*****', i))}
     }
   }
   return(sdata)
@@ -97,11 +101,11 @@ get_del_climate <- function(sdata) {
 #*****************************************************************************************************************
 plan = drake_plan(
   # load data
-  wos_summary = read_xlsx('Studies.xlsx', n_sheet = 2, n_skip = 1),
+  wos_summary = read_xlsx('Number_Studies_byYear.xlsx', n_sheet = 2, n_skip = 1),
   SEDB = clean_sedb(),
   counties = map_data("world", region = ".", exact = FALSE),
-  GlobalMATMAP = read.csv('~/Documents/PNNL/SRDBV5/data/summarized_climate.csv', comment.char = "#"),
-  IGBP_MODIS = read.csv('~/Documents/PNNL/SoilRespirationPartitioning/data/IGBP_Koppen_MODIS.csv') %>% dplyr::select(-warner_rs),
+  GlobalMATMAP = read.csv('F:/My Drive/PNNL/SRDBV5/data/summarized_climate.csv', comment.char = "#"),
+  IGBP_MODIS = read.csv('F:/My Drive/PNNL/SRPartitioning/Data/IGBP_Koppen_MODIS.csv') %>% dplyr::select(-warner_rs),
   
   # link with external data
   SEDB_del = get_del_climate(SEDB)

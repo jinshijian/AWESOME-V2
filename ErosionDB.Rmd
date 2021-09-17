@@ -33,6 +33,8 @@ library(ggridges)
 library(patchwork)
 require(foreign)
 require(MASS)
+# devtools::install_github('kongdd/Ipaper')
+library(Ipaper)
 source("functions.R")
 ```
 
@@ -46,13 +48,14 @@ knitr::opts_chunk$set(message = TRUE, include = TRUE, echo = FALSE,
 
 # load data
 ```{r load data}
-wos_summary <- drake::readd(wos_summary)
+wos_summary <- read_excel('data/Number_Studies_byYear.xlsx', sheet = 2, skip = 1)
+colnames(wos_summary)
 SEDB_del <- drake::readd(SEDB_del)
 counties <- drake::readd(counties)
 GlobalMATMAP <- drake::readd(GlobalMATMAP)
 IGBP_MODIS <- drake::readd(IGBP_MODIS)
 
-## join and get climate, vegetation information
+## join and get climate classification, vegetation information
 SEDB_del %>% mutate(Latitude2 = round(Latitude*2)/2,
                  Longitude2 = round(Longitude*2)/2,
                  Lat_dif = ifelse(Latitude2 - Latitude >=0, 0.25, -0.25),
@@ -76,23 +79,97 @@ SEDB_del %>%
 
 ```
 
+```{r SEDB processing}
+# vegetation group
+SEDB_del %>% dplyr::select(IGBP.x) %>% unique() 
+
+SEDB_del %>%
+  mutate(IGBP = case_when(IGBP.x %in% c("OSH", "CSH") ~ "CSH",
+                          IGBP.x %in% c("EBF", "EDF", "ENF", "MF", "BDF", "FOR", "DBF", "BEF") ~ "FOR",
+                          IGBP.x %in% c("CRO") ~ "CRO",
+                          IGBP.x %in% c("GRA", "SAV", "PST") ~ "GRA",
+                          IGBP.x %in% c("BSV") ~ "BSV",
+                          IGBP.x %in% c("PLT") ~ "PLT",
+                          IGBP.x %in% c("ORC", "OCD") ~ "OCD",
+                          IGBP.x %in% c("MIX") ~ "MIX",
+                          TRUE ~ "OTH")) -> SEDB_del
+
+SEDB_del %>% dplyr::select(IGBP.x, IGBP) %>% filter(IGBP == "OTH" & IGBP.x !="")
+
+# soil group
+SEDB_del %>% 
+  dplyr::select(Soil_texture, ER_annual) %>% 
+  filter(!is.na(ER_annual)) %>% 
+  group_by(Soil_texture) %>% 
+  summarise(ER_mean = mean(ER_annual),
+            obs = n(),
+            se = sd(ER_annual) / sqrt(obs))
+
+SEDB_del %>%
+  mutate(Soil_Group = case_when(Soil_texture %in% c("clay", "Clay") ~ "C",
+                          Soil_texture %in% c("Sandy clay") ~ "SC",
+                          Soil_texture %in% c("clay loam", "Clay loam", "Clay Loam") ~ "CL",
+                          Soil_texture %in% c("Loamy clay", "Silty clay") ~ "SiC",
+                          Soil_texture %in% c("Silty clay loam", "Silty Clay Loam") ~ "SiCL",
+                          Soil_texture %in% c("Sandy clay loam", "Sandy Clay Loam") ~ "SCL",
+                          Soil_texture %in% c("loam", "Loam") ~ "L",
+                          Soil_texture %in% c("Silt loam", "Silt Loam") ~ "SiL",
+                          Soil_texture %in% c("Sand") ~ "S",
+                          Soil_texture %in% c("sandy loam", "Sandy loam", "Sandy Loam") ~ "SL",
+                          Soil_texture %in% c("Loamy sand", "Loamy Sand") ~ "LS",
+                          Soil_texture %in% c("Silt") ~ "Si",
+                          TRUE ~ "OTH")) -> SEDB_del
+
+SEDB_del %>% dplyr::select(Soil_texture, Soil_Group) %>% filter(Soil_Group == "OTH" & Soil_texture !="")
+
+
+# Measure_method group
+SEDB_del %>% 
+  dplyr::select(Meas_method, ER_annual) %>% 
+  filter(!is.na(ER_annual)) %>% 
+  group_by(Meas_method) %>% 
+  summarise(ER_mean = mean(ER_annual),
+            obs = n(),
+            se = sd(ER_annual) / sqrt(obs))
+
+SEDB_del %>%
+  mutate(Meas_method_group = case_when(Meas_method %in% c("Runoff plot") ~ "Runoff plot",
+    Meas_method %in% c("Erosion pins") ~ "Topography",
+    Meas_method %in% c("Caesium 137") ~ "Caesium 137",
+    Meas_method %in% c("Be7", "Pb210") ~ "Be7",
+    Meas_method %in% c("Radioisotopic", "Tracer") ~ "Radioisotopic",
+    Meas_method %in% c("Catchment") ~ "Catchment",
+    Meas_method %in% c("Bathymetry", "Gauging station") ~ "Bathymetry",
+    Meas_method %in% c("Field measurement") ~ "Field measurement",
+    Meas_method %in% c("Field rainfall simulation") ~ "Field rainfall simulation",
+    Meas_method %in% c("AGNPS model", "ASEAT", "ASWAT", "ATEM/SEDEM model", "Model", "MUSLE", "RMMF", "RUSLE", "RUSLE2",
+                       "SWAT", "USLE", "WATEM/SEDEM model", "WEPP") ~ "Model",
+    Meas_method %in% c("Limnigraph", "Microprofiler", "Profilometer", "Topography") ~ "Topography",
+    TRUE ~ "OTH"  )) -> SEDB_del
+
+SEDB_del %>% dplyr::select(Meas_method, Meas_method_group) %>% filter(Meas_method_group == "OTH" & Meas_method !="")
+
+
+
+```
+
 # plot number of study by year
 ```{r number of study by year, fig.width=8, fig.height=7}
 bind_rows(
   wos_summary %>% 
-    mutate(Source = "(a) Number of papers between 1960 and 2020"),
+    mutate(Source = "(a) Number of papers published between 1960 and 2021"),
   SEDB_del %>% 
+    filter(!is.na(Study_midyear) & Study_number != 259) %>% 
     dplyr::select(Study_midyear) %>% 
-    filter(!is.na(Study_midyear)) %>% 
     count(Study_midyear) %>% 
-    mutate(Year = floor(Study_midyear), Num_study = n, Source = "(b) Number of measurements compiled in SoilErosionDB")) %>% 
+    mutate(Year = floor(Study_midyear), Num_study = n, Source = "(b) Number of measurements by measure year compiled in SoilErosionDB")) %>% 
   ggplot(aes(x=Year, y=Num_study)) +
   geom_bar(stat = "sum") +
   facet_wrap(Source ~ ., scales = "free", ncol = 1) +
   labs(x=expression(Year), y=expression(Count~(n))) +
-  scale_x_continuous(breaks = seq(1960,2020,10)) +
+  scale_x_continuous(breaks = seq(1900,2020,10)) +
   theme(legend.position = "none")
-# ggsave("outputs/Figure 1 wos summary.jpg", width = 8, height = 5)
+ggsave("outputs/Figure 1 wos summary.jpg", width = 8, height = 7)
 ```
 
 # site map
@@ -105,8 +182,8 @@ SEDB_del %>%
 # site_plot using leaflet function
 bind_rows(
   SEDB_del %>% 
-    mutate(ER_annual = coalesce(ER_annual, ER_M_Area_h)) %>% 
-    dplyr::select(Longitude, Latitude, ER_annual, ER_M_Area_h) %>% 
+    mutate(ER_annual = coalesce(ER_annual, ER_g_m2_h)) %>% 
+    dplyr::select(Longitude, Latitude, ER_annual, ER_g_m2_h) %>% 
     filter(!is.na(Longitude) & !is.na(ER_annual)) %>%
     group_by(Longitude, Latitude) %>% 
     summarise(count = n()) %>% 
@@ -141,7 +218,7 @@ ggplot(data = counties) +
                  size = count, 
                  col = Indicator,
                  shape = Indicator),
-             alpha = 1,
+             alpha = 0.5,
              stroke = 1 ) +
   scale_shape_manual(values = c(1, 16, 3)) +
   scale_color_manual(values = c("black", "blue", "red")) +
@@ -153,7 +230,7 @@ ggplot(data = counties) +
 
 # country_lat_long_check(SEDB_del %>% filter(Country %in% c("China", "USA")))
 
-# ggsave("outputs/Figure 1. Sites distribution.png", width = 8, height = 4, dpi = 300, units = "in" )
+# ggsave("outputs/Figure 2. Sites distribution.png", width = 8, height = 4, dpi = 300, units = "in" )
 ```
 
 # Scatter plot
@@ -165,8 +242,8 @@ SEDB_del %>% dplyr::select(ER_annual, Runoff_annual, IGBP.y) %>% na.omit() %>%
   labs(x = expression(Annual~runoff~"(mm)"),
       y = expression(Annual~erosion~"(t ha"^{-1}~"yr"^{-1}~")"))
 
-SEDB_del %>% dplyr::select(ER_M_Area_h, Runoff_mm_h, IGBP.y) %>% na.omit() %>% 
-  ggplot(aes(x = Runoff_mm_h, y = ER_M_Area_h, col = IGBP.y)) +
+SEDB_del %>% dplyr::select(ER_g_m2_h, Runoff_mm_h, IGBP.y) %>% na.omit() %>% 
+  ggplot(aes(x = Runoff_mm_h, y = ER_g_m2_h, col = IGBP.y)) +
   geom_point() +
   geom_smooth(method = "lm") +
   labs(x = expression(Runoff~"rate (mm hr"^{-1}~")"),
@@ -215,8 +292,8 @@ SEDB_del %>% dplyr::select(Runoff_annual, Ecosystem2) %>%
   scale_fill_viridis_c(name = "Tail probability", direction = -1) +
   labs(x = expression(Annual~Runoff~"(mm yr"^{-1}~")"),
        y = expression("Density")) +
-  scale_y_discrete(breaks = c("Wetland", "T&B FOR", "Shrubland", "Savanna", "Grassland", "Agriculture"),
-                   labels = c("Wetland", "Forest", "Shrubland", "Savanna", "Grassland", "Agriculture")) +
+  # scale_y_discrete(breaks = c("Wetland", "T&B FOR", "Shrubland", "Savanna", "Grassland", "Agriculture"),
+  #                  labels = c("Wetland", "Forest", "Shrubland", "Savanna", "Grassland", "Agriculture")) +
   theme(legend.position = "none") ->
   p1
 
@@ -236,49 +313,149 @@ SEDB_del %>% dplyr::select(ER_annual, Ecosystem2) %>%
 
 p1 + p2
 
+# use boxplot
+SEDB_del %>% 
+  filter(!is.na(ER_annual)) %>% 
+  ggplot(aes(x=IGBP.x, y=ER_annual)) +
+  # geom_hline(yintercept = 0, linetype = 2, col = "red") + 
+  # geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) +
+  geom_boxplot2(lwd = 0.5, width = 0.5, alpha=1, fatten = NULL,
+               fill = "orange", col = "orange") +
+  stat_summary(fun.y=median, geom="point", shape=16, size=4.5, col = "gray") +
+  stat_summary(fun.y=median, geom="point", shape=16, size=1.5, col = "black") +
+  labs(y = expression(Annual~soil~erosion~(Mg/ha/yr))) 
+  # facet_grid(cols = vars(data)) 
+
 ```
 
-## Make tables for the SDATA manuscript
-```{r}
+
+
+```{r Figure 3, plot erosion rate by different group}
+# by vegetation type
+SEDB_del %>% 
+  dplyr::select(IGBP, ER_annual) %>% 
+  filter(!is.na(ER_annual)) %>% 
+  group_by(IGBP) %>% 
+  summarise(ER_mean = mean(ER_annual),
+            obs = n(),
+            se = sd(ER_annual) / sqrt(obs)) -> SEDB_IGBP
+
+SEDB_IGBP %>% 
+  ggplot(aes(IGBP, ER_mean)) +
+  geom_bar(stat = "identity", col = "black", fill = "white", width = 0.75) +
+  geom_errorbar(aes(ymin=ER_mean - se, ymax = ER_mean + se), col = "black", width = 0.05) +
+  coord_cartesian(ylim = c(0, 95)) +
+  annotate("text", x = c(1:9), y = 80,
+           label = paste0("n=",SEDB_IGBP$obs), angle = 90, hjust = 0) +
+  labs(x=expression(Vegetation~type),
+       y=expression(Soil~erosion~(t~ha^{-1}~yr^{-1}))) -> plot_igbp
+  
+# by soil texture
+SEDB_del %>% 
+  dplyr::select(Soil_Group, ER_annual) %>% 
+  filter(!is.na(ER_annual)) %>% 
+  group_by(Soil_Group) %>% 
+  summarise(ER_mean = mean(ER_annual),
+            obs = n(),
+            se = sd(ER_annual) / sqrt(obs)) %>% 
+  filter(Soil_Group != "SC") -> SEDB_soil
+
+SEDB_soil %>% 
+  ggplot(aes(Soil_Group, ER_mean)) +
+  geom_bar(stat = "identity", col = "black", fill = "white", width = 0.75) +
+  geom_errorbar(aes(ymin=ER_mean - se, ymax = ER_mean + se), col = "black", width = 0.05) +
+  coord_cartesian(ylim = c(0, 95)) +
+  annotate("text", x = c(1:12), y = 80,
+           label = paste0("n=",SEDB_soil$obs), angle = 90, hjust = 0) +
+  labs(x=expression(Soil~type),
+       y=expression(Soil~erosion~(t~ha^{-1}~yr^{-1}))) -> plot_soil
+
+# measure method
+SEDB_del %>% 
+  dplyr::select(Meas_method_group, ER_annual) %>% 
+  filter(!is.na(ER_annual)) %>% 
+  group_by(Meas_method_group) %>% 
+  summarise(ER_mean = mean(ER_annual),
+            obs = n(),
+            se = sd(ER_annual) / sqrt(obs)) -> SEDB_meas
+
+SEDB_meas$Meas_method_group <- c("BAT", "Be7", "Cs137", "CAT", "Field" , "FRS",
+                                 "Model", "OTH", "IST", "Plot" , "TOP")
+
+SEDB_meas %>% 
+  ggplot(aes(Meas_method_group, ER_mean)) +
+  geom_bar(stat = "identity", col = "black", fill = "white", width = 0.75) +
+  geom_errorbar(aes(ymin=ER_mean - se, ymax = ER_mean + se), col = "black", width = 0.05) +
+  coord_cartesian(ylim = c(0, 128)) +
+  annotate("text", x = c(1:11), y = 110,
+           label = paste0("n=", SEDB_meas$obs), angle = 90, hjust = 0) +
+  labs(x=expression(Measure~method),
+       y=expression(Soil~erosion~(t~ha^{-1}~yr^{-1}))) -> plot_meas
+
+
+
+# Field scale
+SEDB_del %>% 
+  dplyr::select(Field_scale, ER_annual) %>% 
+  filter(!is.na(ER_annual)) %>% 
+  group_by(Field_scale) %>% 
+  summarise(ER_mean = mean(ER_annual),
+            obs = n(),
+            se = sd(ER_annual) / sqrt(obs)) -> SEDB_scale
+SEDB_scale$Field_scale <- c("OTH", "Catchment", "Plot", "Slope")
+
+SEDB_scale %>% 
+  ggplot(aes(Field_scale, ER_mean)) +
+  geom_bar(stat = "identity", col = "black", fill = "white", width = 0.75) +
+  geom_errorbar(aes(ymin=ER_mean - se, ymax = ER_mean + se), col = "black", width = 0.05) +
+  coord_cartesian(ylim = c(0, 42)) +
+  annotate("text", x = c(1:4), y = 36,
+           label = paste0("n=", SEDB_scale$obs), angle = 90, hjust = 0) +
+  labs(x=expression(Field~scale),
+       y=expression(Soil~erosion~(t~ha^{-1}~yr^{-1}))) -> plot_scale
+
+(plot_igbp / plot_soil) | (plot_meas / plot_scale) -> plot_catg
+plot_catg + plot_annotation(tag_levels = 'a', tag_prefix = '(',  tag_suffix = ')')
+
+# ggsave("outputs/Figure 3. Sistribution of erosion and runoff.png", width = 10, height = 8, dpi = 300, units = "in" )
+```
+
+## Make tables for the ESSD manuscript
+```{r Table 1}
 # Table 1
-SEDB_del %>% 
-  select(Meas_method) %>% 
-  count(Meas_method) %>% 
-  mutate(Method_group = case_when(
-    Meas_method %in% c("Lab rainfall simulation") ~ "Lab rainfall simulation",
-    Meas_method %in% c("Model", "Remote sensing", "GIS", "Topography", "Dendrochronology") ~ "Indirect methods",
-    Meas_method %in% c("Be7", "Caesium 137", "Field measurement",
-                       "Field rainfall simulation", "Catchment", "Erosion pins") ~ "Field measurements",
-    TRUE ~ "Others" )) ->
-  Table1
-
- knitr::kable(Table1 %>% select(Method_group, Meas_method, n))
+SEDB_meas
+knitr::kable(SEDB_meas)
 ```
 
-```{r}
-# Table 3
+
+```{r Table 4}
+# Table 4
 SEDB_del %>% 
-  select(Quality_flag) %>% 
+  dplyr::select(Quality_flag) %>% 
   count(Quality_flag)
 ```
 
-```{r}
-# Table 4
+```{r Table 5}
+# Table 5
 SEDB_del %>% 
-  select(Manipulation) %>% 
+  dplyr::select(Manipulation) %>% 
   count(Manipulation)
 ```
 
-```{r}
-# Table 5
+
+
+
+```{r Table S1}
+# Table X
 SEDB_del %>% 
-  select(Leaching_type) %>% 
+  dplyr::select(Leaching_type) %>% 
   count(Leaching_type)
 ```
 
-```{r}
+
+```{r Figure 6}
 # Link with external data and plot
-SEDB_del$Study_precip[SEDB_del$Study_number == 82] <- 1632
+# SEDB_del$Study_precip[SEDB_del$Study_number == 82] <- 1632
 SEDB_del %>% 
   dplyr::select(Study_midyear, Latitude, Longitude, MAT, MAP, Study_temp, Study_precip, MAT_Del, MAP_Del, Tannual_del, Pannual_del) 
 
@@ -297,6 +474,7 @@ bind_rows(
   
   SEDB_del %>% 
     dplyr::select(MAP, MAP_Del) %>% 
+    filter(MAP < 6000) %>% 
     rename(Study = MAP, Del = MAP_Del) %>% 
     na.omit() %>% 
     mutate(Type = "(c) MAP (mm)"),
@@ -313,34 +491,373 @@ bind_rows(
   facet_wrap(~ Type, ncol = 2, scales = "free") +
   labs(x = expression(Values~from~the~global~climate~dataset),
        y = expression(Values~from~papers))
+
+# ggsave("outputs/Figure 6. Tm Pm relationship.png", width = 8, height = 6, dpi = 300, units = "in" )
+
+SEDB_del %>% 
+  dplyr::select(Study_temp, Tannual_del) %>% 
+  rename(Study = Study_temp, Del = Tannual_del) %>% 
+  na.omit() %>% 
+  ggplot(aes(Del, Study)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+    
 ```
 
-```{r}
-SEDB_del %>% select(ER_annual, Pannual_del) %>%
-  na.omit() %>% 
-  filter(ER_annual < 500) %>% 
-  group_by(Pannual_del) %>% 
-  summarise(Obs = n(), ER_annual = mean(ER_annual)) %>% 
-  mutate(ER_annual = log(ER_annual)) ->
-  SEDB_agg
+## Soil erosion vs variables relationship
 
-SEDB_agg %>% 
-  # filter(Pannual_del < 3000 & ER_annual < 300) %>%
-  ggplot(aes(x = Pannual_del, y = ER_annual, size = Obs)) +
-  geom_point(alpha = 0.75) +
-  geom_smooth(method = "lm", show.legend = FALSE) +
-  labs(x = expression(Annual~precipitation~"(mm)"),
-      y = expression(Annual~'erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
-  scale_size_continuous(name = "Obs (n)") +
-  annotate("text", x = 3000, y = -2, label = "italic(R) ^ 2 == 0.07", hjust = 0, parse = TRUE)
+```{r Table 6}
+# linear regression results between soil erosion and numeric factors
+lm_er_var <- function(sdata, var_column) {
+  
+  sdata %>%
+    dplyr::select(ER_annual, {{var_column}}) %>% 
+    filter(ER_annual > 0) %>% na.omit() -> sub_data
+  
+  var_column = colnames (sub_data)[2]
+  
+  colnames (sub_data) = c("ER_annual", "var")
+  
+  sub_data %>% 
+    group_by(var) %>% 
+    summarise(Obs = n(), ER_annual = mean(ER_annual)) %>% 
+    mutate(ER_annual = log(ER_annual)) -> sdata_agg
+  
+  # linear regression
+  slm <- lm(sdata_agg$ER_annual ~ sdata_agg$var, weights = sdata_agg$Obs) 
+  summary(slm) -> sum_lm
+  
+  outputs = tibble(var_num = var_column,
+                   R2 = sum_lm$r.squared,
+                   n = nrow(sdata_agg),
+                   p = sum_lm$coefficients[2,4] %>% round(5) )
+  
+  return(outputs)
+}
 
-slm <- lm(SEDB_agg$ER_annual ~ SEDB_agg$Pannual_del, weights = SEDB_agg$Obs) 
-summary(slm)
-cooks.distance( slm ) %>% max()
+bind_rows(
+  lm_er_var(SEDB_del, Pannual_del),
+  lm_er_var(SEDB_del, MPET),
+  lm_er_var(SEDB_del, Tannual_del),
+  lm_er_var(SEDB_del, LAI),
+  lm_er_var(SEDB_del, Soil_sand),
+  lm_er_var(SEDB_del, Soil_silt),
+  lm_er_var(SEDB_del, Soil_clay),
+  lm_er_var(SEDB_del, Soil_BD),
+  lm_er_var(SEDB_del, Soil_pH),
+  lm_er_var(SEDB_del, Soil_C_.),
+  lm_er_var(SEDB_del, Soil_N),
+  lm_er_var(SEDB_del, Soil_CN),
+  lm_er_var(SEDB_del, Ksat),
+  lm_er_var(SEDB_del, L),
+  lm_er_var(SEDB_del, Slope),
+  lm_er_var(SEDB_del, Plant_cover_C)
+)
+
 
 # Robust regression
-rust_lm <- rlm(SEDB_agg$ER_annual ~ SEDB_agg$Pannual_del, weights = SEDB_agg$Obs)
-summary(rust_lm)
-cooks.distance( rust_lm ) %>% max()
+# rust_lm <- rlm(SEDB_agg$ER_annual ~ SEDB_agg$Pannual_del, weights = SEDB_agg$Obs)
+# summary(rust_lm)
+# cooks.distance( rust_lm ) %>% max()
+
 ```
 
+
+
+```{r plot ER_annual vs num variables}
+# function for testing ER_annual vs numeric relationship
+plot_er_var <- function(sdata, var_column) {
+  sdata %>%
+    dplyr::select(ER_annual, {{var_column}}) %>% 
+    filter(ER_annual > 0) %>% na.omit() -> sdata_agg
+  
+  colnames (sdata_agg) = c("ER_annual", "var")
+  
+  sdata_agg %>% 
+    group_by(var) %>% 
+    summarise(Obs = n(), ER_annual = mean(ER_annual)) %>% 
+    mutate(ER_annual = log(ER_annual)) -> sdata_agg
+  
+  # scatter plot
+  sdata_agg %>% 
+    ggplot(aes(x = var, y = ER_annual, size = Obs)) +
+    geom_point(alpha = 0.75) +
+    geom_smooth(method = "lm", show.legend = FALSE) +
+    scale_size_continuous(name = "Obs (n)") -> plot_var
+  
+  return(plot_var)
+}
+
+## a. ER_annual vs Precipitation
+plot_er_var(SEDB_del, Pannual_del) +
+  labs(x = expression(Annual~precipitation~"(mm)"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  annotate("text", x = 3500, y = -8, label = "italic(R) ^ 2 == 0.07", hjust = 0, parse = TRUE) +
+  ggtitle('(a)') -> plot_precp
+
+
+# b. vs annual temperature
+plot_er_var(SEDB_del, Tannual_del) +
+  labs(x = expression(Annual~temperature~"("~degree~C~")"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  annotate("text", x = 15, y = -10, label = "italic(R) ^ 2 == 0.13", hjust = 0, parse = TRUE) +
+  ggtitle('(b)') -> plot_temp
+
+
+# c. vs plant coverage
+plot_er_var(SEDB_del, Plant_cover_C) +
+  labs(x = expression(Plant~coverage~"(%)"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  annotate("text", x = 25, y = -3, label = "italic(R) ^ 2 == 0.25", hjust = 0, parse = TRUE) +
+  ggtitle('(c)') -> plot_plant
+
+# d. vs plant clay
+plot_er_var(SEDB_del, Soil_clay) +
+  labs(x = expression(Soil~clay~"(%)"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  annotate("text", x = 40, y = -4, label = "italic(R) ^ 2 == 0.11", hjust = 0, parse = TRUE) +
+  ggtitle('(d)') -> plot_clay
+
+
+# e vs bulk density
+plot_er_var(SEDB_del, Soil_BD) +
+  labs(x = expression(Soil~BD~"("~g~m^3~")"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  theme(axis.title.y = element_blank()) +
+  annotate("text", x = 1.5, y = -3, label = "italic(R) ^ 2 == 0.22", hjust = 0, parse = TRUE) +
+  ggtitle('(e)') -> plot_bd
+
+# f vs pH
+plot_er_var(SEDB_del, Soil_pH) +
+  labs(x = expression(Soil~pH),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  theme(axis.title.y = element_blank()) +
+  annotate("text", x = 7.5, y = -6, label = "italic(R) ^ 2 == 0.18", hjust = 0, parse = TRUE) +
+  ggtitle('(f)') -> plot_pH
+
+# g vs SOC
+plot_er_var(SEDB_del, Soil_C_.) +
+  labs(x = expression(Soil~SOC~"(%)"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  theme(axis.title.y = element_blank()) +
+  annotate("text", x = 8, y = -6, label = "italic(R) ^ 2 == 0.07", hjust = 0, parse = TRUE) +
+  ggtitle('(g)') -> plot_soc
+
+## h vs Field area
+SEDB_del %>% 
+  dplyr::select(ER_annual, Field_area) %>%
+  na.omit() %>% 
+  filter(ER_annual > 0 & Field_area > 0) %>% 
+  group_by(Field_area) %>% 
+  summarise(Obs = n(), ER_annual = mean(ER_annual)) %>% 
+  mutate(ER_annual = log(ER_annual), Field_area = log(Field_area)) ->
+  SEDB_agg_fieldarea
+
+lm(SEDB_agg_fieldarea$ER_annual ~ SEDB_agg_fieldarea$Field_area, weights = SEDB_agg_fieldarea$Obs) %>% summary()
+
+SEDB_agg_fieldarea %>% 
+  ggplot(aes(x = Field_area, y = ER_annual, size = Obs)) +
+  geom_point(alpha = 0.75) +
+  geom_smooth(method = "lm", show.legend = FALSE) +
+  labs(x = expression(Field~'area, '~log~"("~m^{-2}~")" ),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  theme(axis.title.y = element_blank()) +
+  scale_size_continuous(name = "Obs (n)") +
+  annotate("text", x = 10, y = -10, label = "italic(R) ^ 2 == 0.24", hjust = 0, parse = TRUE) +
+  ggtitle('(h)') -> plot_area
+
+(plot_precp / plot_temp / plot_plant / plot_clay ) | (plot_bd / plot_pH / plot_soc / plot_area) 
+# ggsave("outputs/Figure 4. Erosion v relationship.png", width = 9, height = 10, dpi = 300, units = "in" )
+```
+
+```{r plot var not significant}
+# function for testing ER_annual vs numeric relationship
+plot_er_var2 <- function(sdata, var_column) {
+  sdata %>%
+    dplyr::select(ER_annual, {{var_column}}) %>% 
+    filter(ER_annual > 0) %>% na.omit() -> sdata_agg
+  
+  colnames (sdata_agg) = c("ER_annual", "var")
+  
+  sdata_agg %>% 
+    group_by(var) %>% 
+    summarise(Obs = n(), ER_annual = mean(ER_annual)) %>% 
+    mutate(ER_annual = log(ER_annual)) -> sdata_agg
+  
+  # scatter plot
+  sdata_agg %>% 
+    ggplot(aes(x = var, y = ER_annual, size = Obs)) +
+    geom_point(alpha = 0.75) +
+    # geom_smooth(method = "lm", show.legend = FALSE) +
+    scale_size_continuous(name = "Obs (n)") -> plot_var
+  
+  return(plot_var)
+}
+
+## a. ER_annual vs MPET
+plot_er_var2(SEDB_del, MPET) +
+  labs(x = expression(Annual~evaporation~"(mm)"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  ggtitle('(a)') -> plot_mpet
+
+## b. ER_annual vs sand
+plot_er_var2(SEDB_del, Soil_sand) +
+  labs(x = expression(Soil~sand~"(%)"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  ggtitle('(b)') -> plot_sand
+
+## c. ER_annual vs N
+plot_er_var2(SEDB_del, Soil_N) +
+  labs(x = expression(Soil~N~"(%)"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  ggtitle('(c)') -> plot_n
+
+## d. ER_annual vs cn
+plot_er_var2(SEDB_del %>% filter(Soil_CN < 50), Soil_CN) +
+  labs(x = expression(Soil~"C/N"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  ggtitle('(d)') -> plot_cn
+
+## e. ER_annual vs ksat
+plot_er_var2(SEDB_del %>% filter(Ksat < 50), Ksat) +
+  labs(x = expression(Ksat~"(cm/h)"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  ggtitle('(e)') -> plot_ksat
+  
+## f. ER_annual vs L
+plot_er_var2(SEDB_del, L) +
+  labs(x = expression(Slope~length~"(m)"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  ggtitle('(f)') -> plot_l
+
+```
+
+
+
+```{r}
+(plot_mpet / plot_sand / plot_n) | (plot_cn / plot_ksat / plot_l) 
+ggsave("outputs/Figure SX. Erosion var.png", width = 9, height = 8, dpi = 300, units = "in" )
+```
+
+
+
+```{r test slope}
+plot_er_var(SEDB_del %>% filter(Field_scale == "Runoff plot"), Slope) +
+  labs(x = expression(Slope~"("~degree~")"),
+      y = expression('Erosion,'~log~"(t ha"^{-1}~"yr"^{-1}~")")) +
+  annotate("text", x = 15, y = -10, label = "italic(R) ^ 2 == 0.002", hjust = 0, parse = TRUE)
+
+SEDB_del %>% 
+  mutate(IGBP = case_when(IGBP.x %in% c("BDF", "BEF", "DBF", "EBF", "EDF", "ENF", "FOR", "MF", "PLT") ~ "FOR",
+                          IGBP.x %in% "BSV" ~ "BSV", 
+                          IGBP.x %in% "CRO" ~ "CRO",
+                          IGBP.x %in% c("CSH", "OSH", "SAV") ~ "CSH",
+                          IGBP.x %in% c("GRA", "PST") ~ "GRA",
+                          IGBP.x %in% c("OCD", "ORC") ~ "OCD",
+                          # IGBP.x %in% c("", "") ~ "",
+                          TRUE ~ "OTH")) -> SEDB_del
+
+SEDB_del %>% filter(IGBP == "OTH") %>% 
+  dplyr::select(IGBP.x, IGBP) %>% 
+  count(IGBP.x)
+
+SEDB_del %>%
+  dplyr::select(ER_annual, Meas_method_group, Slope, IGBP.x) %>% 
+  filter(ER_annual > 0) %>% na.omit() %>%  
+  filter(Meas_method_group == "Runoff plot") %>% 
+  ggplot(aes(x = Slope, y = log(ER_annual))) +
+  geom_point(alpha = 0.75) +
+  facet_wrap(.~IGBP.x) +
+  geom_smooth(method = "lm", show.legend = FALSE) 
+
+SEDB_del %>%
+  dplyr::select(ER_annual, Meas_method_group, Slope, IGBP) %>% 
+  filter(ER_annual > 0) %>% na.omit() %>%  
+  filter(Meas_method_group == "Runoff plot") -> SEDB_veg
+
+SEDB_veg %>% 
+  dplyr::select(ER_annual, IGBP, Slope) %>% 
+  group_by(IGBP, Slope) %>% 
+  summarise(ER_annual = log(mean(ER_annual)),
+            obs = n()) -> SEDB_veg
+
+# BSV
+SEDB_veg %>% 
+  filter(IGBP %in% c("BSV")) ->
+  sub1
+lm(ER_annual ~ Slope, data = sub1) %>% summary()
+
+# CRO
+SEDB_veg %>% 
+  filter(IGBP %in% c("CRO")) ->
+  sub2
+lm(ER_annual ~ Slope, data = sub2) %>% summary()
+
+# CSH
+SEDB_veg %>% 
+  filter(IGBP %in% c("CSH")) ->
+  sub3
+lm(ER_annual ~ Slope, data = sub3) %>% summary()
+
+# FOR
+SEDB_veg %>% 
+  filter(IGBP %in% c("FOR")) ->
+  sub4
+lm(ER_annual ~ Slope, data = sub4) %>% summary()
+
+# GRA
+SEDB_veg %>% 
+  filter(IGBP %in% c("GRA")) ->
+  sub5
+lm(ER_annual ~ Slope, data = sub5) %>% summary()
+
+# OCD
+SEDB_veg %>% 
+  filter(IGBP %in% c("OCD")) ->
+  sub6
+lm(ER_annual ~ Slope, data = sub6) %>% summary()
+
+# OTH
+SEDB_veg %>% 
+  filter(IGBP %in% c("OTH")) ->
+  sub7
+lm(ER_annual ~ Slope, data = sub7) %>% summary()
+
+```
+
+```{r Er vs slope by vegetation, fig.height=6, fig.width=8}
+SEDB_veg %>% 
+  ggplot(aes(Slope, ER_annual)) +
+  geom_point(aes(size  = obs), shape = 16, alpha = 0.5) +
+  geom_smooth(method = "lm", data = SEDB_veg %>% filter(IGBP %in% c("CRO")), fill = "skyblue") +
+  facet_wrap(.~ IGBP, scales = "free", nrow = 2) +
+  # facet_grid(rows = vars(IGBP), scales = "free") +
+  labs(x=expression("Slope ("~degree~")"), y = expression(Annual~soil~erosion~(t~ha^{-1}~yr^{-1}))) +
+  labs(size="obs (n)")
+
+ggsave('outputs/Figure 5-v2.TestSlope.png', width = 8, height = 5)
+```
+
+
+```{r}
+## ER_annual vs Elevation
+SEDB_del %>% 
+  dplyr::select(ER_annual, Elevation) %>%
+  na.omit() %>% 
+  filter(ER_annual > 0) %>% 
+  group_by(Elevation) %>% 
+  summarise(Obs = n(), ER_annual = mean(ER_annual)) %>% 
+  mutate(ER_annual = log(ER_annual)) ->
+  SEDB_agg_elev
+
+lm(SEDB_agg_elev$ER_annual ~ SEDB_agg_elev$Elevation, weights = SEDB_agg_elev$Obs) %>% summary()
+```
+
+
+
+```{r}
+GarciaRuiz_SI <- read.csv('References/259-GarciaRuiz/1-s2.0-S0169555X1500149X-mmc2.csv', sep = ";") %>% 
+  filter(!is.na(ref))
+
+write.csv(GarciaRuiz_SI, "References/259-GarciaRuiz/GarciaRuiz_SI.csv", row.names = FALSE)
+```

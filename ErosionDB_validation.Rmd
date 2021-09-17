@@ -30,6 +30,34 @@ library(sp)
 library(readxl)
 ```
 
+
+```{r functions}
+country_lat_long_check <- function(sdata){
+  ggplot(data = counties) + 
+    geom_polygon(aes(x = long, y = lat, group = group),
+                 color = "gray", fill = 'white', alpha = 0.5, size = 0.25) + 
+    guides(fill="none") +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank()) +
+    geom_rect(data = sdata,
+              mapping=aes(xmin=Long_min, xmax=Long_max, ymin=Lat_min, ymax=Lat_max),
+              color="red", alpha = 0.5) +
+    labs(title=sdata$Country,
+         x ="Latitude", y = "Longitude") ->
+    p_check
+  print(p_check)}
+
+
+qc_background <- function (sdata) { 
+  ggplot(sub_data, aes(x=Value)) + 
+    geom_histogram(color="black", fill="gray", bins = 30) + 
+    theme_bw() +
+    xlab (var_num_col[i]) ->
+    p_hist
+  print(p_hist)
+}
+```
+
 # Setup
 ```{r preliminaries, message=FALSE, include=FALSE, echo=FALSE, cache=TRUE}
 # Set chunks defaults, these options will be applied to all subsequent chunks
@@ -41,7 +69,8 @@ knitr::opts_chunk$set(message = TRUE, include = TRUE, echo = FALSE,
 # load data
 ```{r load data}
 wos_summary <- drake::readd(wos_summary)
-SEDB_del <- drake::readd(SEDB_del)
+# SEDB_del <- drake::readd(SEDB_del)
+SEDB_del <- read.csv('data/SoilErosionDB_v2.csv')
 counties <- drake::readd(counties)
 GlobalMATMAP <- drake::readd(GlobalMATMAP)
 IGBP_MODIS <- drake::readd(IGBP_MODIS)
@@ -65,23 +94,23 @@ left_join(SEDB_del, GlobalMATMAP, by=c("Latitude2"="Latitude", "Longitude2"="Lon
   SEDB_del
 
 SEDB_del %>% 
-  dplyr::select(Study_midyear, Latitude, Longitude, MAT, MAP, Study_temp, Study_precip, MAT_Del, MAP_Del, Tannual_del, Pannual_del) 
+  dplyr::select(Study_midyear, Latitude, Longitude, MAT, MAP, Study_temp, Study_precip) 
 # Change Latitude and Longitude to 0.5 resolution for IGBP
 
 ```
 
 
 ```{r check potential latitude and longitude input error}
-varCountry <- sort(unique(SEDB_del$Country)) # data from 43 countries, all data has contry information
+varCountry <- sort(unique(SEDB_del$Country)) # data from 43 countries, all data has country information
 sum_country <- as.data.frame(matrix(NA, ncol = 7))
 colnames(sum_country) <- c("ID", "Country", "Lat_min", "Lat_max", "Long_min", "Long_max", "obs(n)")
 
 for (i in seq(varCountry)) {
   subdata <- SEDB_del %>% filter(Country == varCountry[i] & !is.na(Country)) 
-  min_lat <- min(subdata$Latitude, na.rm = T)
-  max_lat <- max(subdata$Latitude, na.rm = T)
-  min_long <- min(subdata$Longitude, na.rm = T)
-  max_long <- max(subdata$Longitude, na.rm = T)
+  min_lat <- subdata %>% dplyr::select(Latitude) %>% na.omit() %>% min()
+  max_lat <- subdata %>% dplyr::select(Latitude) %>% na.omit() %>% max()
+  min_long <- subdata %>% dplyr::select(Longitude) %>% na.omit() %>% min()
+  max_long <- subdata %>% dplyr::select(Longitude) %>% na.omit() %>% max()
   n_obs <- nrow(subdata) # number of observations in this country
   
   sum_country[i,] <- list(i, varCountry[i], min_lat, max_lat, min_long, max_long, n_obs)
@@ -98,13 +127,15 @@ for(i in seq(nrow(sum_country))) {
 }
 ```
 
+
+
 ```{r histgram of numeric records information}
 colnames(SEDB_del)
 var_num_col <- colnames(SEDB_del) 
 # create a function to 
 
 for(i in seq(var_num_col)){
-  sub_data = sdata[, which(colnames(sdata) == var_num_col[i])]
+  sub_data = SEDB_del[, which(colnames(SEDB_del) == var_num_col[i])] %>% as.data.frame()
   colnames(sub_data) = "Value"
   sub_data %>% na.omit() -> sub_data
   if(var_num_col[i] %in% c("Unique_ID", "barren_yn", "Study_number")) {next}
@@ -116,5 +147,9 @@ for(i in seq(var_num_col)){
 ```
 
 
+```{r}
+sdata
+SEDB_del
+```
 
 

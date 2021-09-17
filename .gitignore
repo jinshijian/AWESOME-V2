@@ -1,12 +1,13 @@
 # specific files ignored
 .Rhistory
 .RData
+.RDataTemp
 ErosionDB.html
 ErosionDB.docx
 
 # file or dir in this file will be ignored
 Proposal/
-old/
+data/old/
 References/
 SoilErosionModel/
 extdata/
