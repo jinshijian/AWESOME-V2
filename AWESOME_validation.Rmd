@@ -40,7 +40,7 @@ country_lat_long_check <- function(sdata){
     theme(panel.grid.major = element_blank(),
           panel.grid.minor = element_blank()) +
     geom_rect(data = sdata,
-              mapping=aes(xmin=Long_min, xmax=Long_max, ymin=Lat_min, ymax=Lat_max),
+              mapping=aes(xmin=Lon_min, xmax=Lon_max, ymin=Lat_min, ymax=Lat_max),
               color="red", alpha = 0.5) +
     labs(title=sdata$Country,
          x ="Latitude", y = "Longitude") ->
@@ -70,7 +70,7 @@ knitr::opts_chunk$set(message = TRUE, include = TRUE, echo = FALSE,
 ```{r load data}
 wos_summary <- drake::readd(wos_summary)
 # SEDB_del <- drake::readd(SEDB_del)
-SEDB_del <- read.csv('data/SoilErosionDB_v2.csv')
+# SEDB_del <- read.csv('data/SoilErosionDB_v2.csv')
 counties <- drake::readd(counties)
 GlobalMATMAP <- drake::readd(GlobalMATMAP)
 IGBP_MODIS <- drake::readd(IGBP_MODIS)
@@ -101,30 +101,38 @@ SEDB_del %>%
 
 
 ```{r check potential latitude and longitude input error}
-varCountry <- sort(unique(SEDB_del$Country)) # data from 43 countries, all data has country information
-sum_country <- as.data.frame(matrix(NA, ncol = 7))
-colnames(sum_country) <- c("ID", "Country", "Lat_min", "Lat_max", "Long_min", "Long_max", "obs(n)")
-
+varCountry <- sort(unique(SEDB_del$Country)) # data from XXX countries, all data has country information
+sum_country <- data.frame()
 for (i in seq(varCountry)) {
-  subdata <- SEDB_del %>% filter(Country == varCountry[i] & !is.na(Country)) 
-  min_lat <- subdata %>% dplyr::select(Latitude) %>% na.omit() %>% min()
-  max_lat <- subdata %>% dplyr::select(Latitude) %>% na.omit() %>% max()
-  min_long <- subdata %>% dplyr::select(Longitude) %>% na.omit() %>% min()
-  max_long <- subdata %>% dplyr::select(Longitude) %>% na.omit() %>% max()
-  n_obs <- nrow(subdata) # number of observations in this country
+  subdata <- SEDB_del %>% filter(Country == varCountry[i] & !is.na(Country))
+  lat_try <-  subdata %>% dplyr::select(Latitude) %>% na.omit()
+  lon_try <- subdata %>% dplyr::select(Longitude) %>% na.omit() 
   
-  sum_country[i,] <- list(i, varCountry[i], min_lat, max_lat, min_long, max_long, n_obs)
-  sum_country %>% filter(is.finite(Lat_min)) ->
-    sum_country
+  min_lat <- ifelse(nrow(lat_try) == 0, NA, min(lat_try))
+  max_lat <- ifelse(nrow(lat_try) == 0, NA, max(lat_try))
+  min_lon <- ifelse(nrow(lon_try) == 0, NA, min(lon_try))
+  max_lon <- ifelse(nrow(lon_try) == 0, NA, max(lon_try))
+  
+  Country_name <- varCountry[i]
+    
+  n_obs <- nrow(subdata) # number of observations in this country
+
+  output <- bind_cols(i, Country_name, min_lat, max_lat, min_lon, max_lon, n_obs)
+  sum_country <- bind_rows(sum_country, output)
+  
+  print(paste0("-----", i))
 }
 
-sum_country # view and check potential latitude and longitude input error
+colnames(sum_country) <- c("ID", "Country", "Lat_min", "Lat_max", "Lon_min", "Lon_max", "obs")
+
+sum_country  # view and check potential latitude and longitude input error
 
 for(i in seq(nrow(sum_country))) {
   sdata = sum_country[i,]
   country_lat_long_check(sdata)
   print(paste0("*****", i))
 }
+
 ```
 
 
@@ -149,7 +157,8 @@ for(i in seq(var_num_col)){
 
 ```{r}
 sdata
-SEDB_del
+SEDB_del %>% count(Country)
+SEDB_del %>% count(Latitude, Longitude)
 ```
 
 

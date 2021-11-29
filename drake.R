@@ -25,11 +25,11 @@ read_file <- function(x) read.csv(file.path(DATA_DIR, x), comment.char = "#", st
 # input xlsx data
 read_xlsx <- function(x, n_sheet, n_skip) read_excel(file.path(DATA_DIR, x), sheet = n_sheet, skip = n_skip)
 # write csv 
-writ_file <- function(input, output) write.csv(input, file.path(OUT_DIR, output), row.names = FALSE)
+writ_file <- function(input, output) write.csv(input, file.path(OUTPUT_DIR, output), row.names = FALSE)
 # clean SEDB
 clean_sedb <- function() {
   # sdata <- read_xlsx('SoilErosionDB_v2.xlsx', n_sheet = 1, n_skip = 0)
-  sdata <- read.csv("data/SoilErosionDB_v2.csv")
+  sdata <- read.csv("data/SoilErosionDB_v2-2.csv")
   sdata$Study_midyear <- ifelse(!is.na(sdata$Study_midyear), sdata$Study_midyear, sdata$Paper_year - 12)
   sdata$Study_midyear <- floor(sdata$Study_midyear)
   return(sdata)
@@ -112,4 +112,4 @@ plan = drake_plan(
 )
 
 make(plan)
-
+# clean(plan)
